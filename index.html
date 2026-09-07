@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Portfolio Deal Room</title>
+<script>
+(function(){
+  var KEY='pdr_gate_v1';
+  if (sessionStorage.getItem(KEY)==='ok') return;
+  if (prompt('Portfolio Deal Room password:')==='1234') { sessionStorage.setItem(KEY,'ok'); return; }
+  document.documentElement.innerHTML='<body style="font-family:system-ui;background:#0f1419;color:#e8eef7;display:flex;min-height:100vh;align-items:center;justify-content:center"><p>Unauthorized</p></body>';
+  throw new Error('unauthorized');
+})();
+</script>
+<style>
+:root{--bg:#0f1419;--panel:#1a2332;--panel2:#243044;--border:#2d3a4f;--text:#e8eef7;--muted:#8b9bb4;--a:#22c55e;--b:#eab308;--c:#ef4444;--chip:#1e293b;--chip-on:#2563eb;--row-hover:#1e2a3d;--link:#60a5fa}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
+a{color:var(--link);cursor:pointer;text-decoration:none}a:hover{text-decoration:underline}
+header{padding:14px 18px;border-bottom:1px solid var(--border);background:var(--panel);display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+h1{margin:0;font-size:18px}.meta{color:var(--muted);font-size:12px}.wrap{padding:16px 18px;max-width:1400px;margin:0 auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px}.card .label{color:var(--muted);font-size:11px}.card .value{font-size:18px;font-weight:650}
+.card.a .value{color:var(--a)}.card.b .value{color:var(--b)}.card.c .value{color:var(--c)}
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center}
+.chip{background:var(--chip);border:1px solid var(--border);border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--text)}
+.chip.on{background:var(--chip-on);color:#fff}input[type=search]{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;flex:1;min-width:160px}
+table{width:100%;border-collapse:collapse}th,td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-size:11px}td.num{text-align:right}tr:hover td{background:var(--row-hover)}
+tr.clickable{cursor:pointer}
+.hidden{display:none}
+.section{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px}
+.kv{display:grid;grid-template-columns:160px 1fr;gap:4px 10px}.kv .k{color:var(--muted)}
+.back{display:inline-block;margin-bottom:10px;font-size:14px}
+.doc{padding:4px 0;border-bottom:1px solid var(--border);color:var(--muted)}
+.err{color:#f87171;padding:12px}
+</style></head><body>
+<div id="listView">
+<header><h1>Portfolio Deal Room</h1><div class="meta"><span id="countMeta">Loading…</span></div></header>
+<div class="wrap">
+<div class="cards" id="cards"></div>
+<div class="filters">
+<span class="chip on" data-abc="all">All</span><span class="chip" data-abc="A">A</span><span class="chip" data-abc="B">B</span><span class="chip" data-abc="C">C</span>
+<span class="chip on" data-co="all">All Cos</span><span class="chip" data-co="Grinberg">Grinberg</span><span class="chip" data-co="Richmond">Richmond</span><span class="chip" data-co="SINY">SINY</span>
+<span class="chip on" data-region="all">All regions</span><span class="chip" data-region="NY">NY/NJ</span><span class="chip" data-region="GA">GA</span>
+<input id="q" type="search" placeholder="Search address…"/>
+</div>
+<div style="overflow:auto"><table>
+<thead><tr><th>Address</th><th>ABC</th><th>Company</th><th>Region</th><th>Purchase</th><th>Holding</th><th>Cost-to-date</th><th>Docs</th></tr></thead>
+<tbody id="tbody"></tbody>
+</table></div>
+</div></div>
+
+<div id="detailView" class="hidden wrap">
+<a class="back" href="#" id="backBtn">← Back to list</a>
+<div id="detailRoot"></div>
+</div>
+
+<script>
+let DATA=[];
+let abc='all', co='all', q='', region='all';
+
+function money(n){
+  if(n==null||n==='') return '—';
+  const x=Number(n);
+  if(Number.isNaN(x)) return '—';
+  return x.toLocaleString('en-US',{style:'currency',currency:'USD'});
+}
+function esc(s){
+  return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function companyShort(c){
+  c=String(c||'');
+  if(/grinberg/i.test(c)) return 'Grinberg';
+  if(/richmond/i.test(c)) return 'Richmond';
+  if(/siny/i.test(c)) return 'SINY';
+  return c;
+}
+function filtered(){
+  const qq=q.trim().toLowerCase();
+  return DATA.filter(p=>{
+    if(abc!=='all' && String(p.abc||'').toUpperCase()!==abc) return false;
+    if(co!=='all' && companyShort(p.company)!==co) return false;
+    if(region!=='all'){
+      const r=String(p.region||'NY').toUpperCase();
+      if(region==='NY'){ if(r!=='NY' && r!=='NJ') return false; }
+      else if(r!==region) return false;
+    }
+    if(qq){
+      const hay=(p.address+' '+p.slug+' '+p.company+' '+(p.abc||'')+' '+(p.region||'')).toLowerCase();
+      if(!hay.includes(qq)) return false;
+    }
+    return true;
+  });
+}
+function renderList(){
+  const rows=filtered();
+  document.getElementById('countMeta').textContent=DATA.length+' properties · showing '+rows.length;
+  const a=DATA.filter(p=>String(p.abc).toUpperCase()==='A').length;
+  const b=DATA.filter(p=>String(p.abc).toUpperCase()==='B').length;
+  const c=DATA.filter(p=>String(p.abc).toUpperCase()==='C').length;
+  const cost=DATA.reduce((s,p)=>s+(Number(p.costToDateDocumented)||0),0);
+  document.getElementById('cards').innerHTML=
+    `<div class="card"><div class="label">Properties</div><div class="value">${DATA.length}</div></div>`+
+    `<div class="card a"><div class="label">A</div><div class="value">${a}</div></div>`+
+    `<div class="card b"><div class="label">B</div><div class="value">${b}</div></div>`+
+    `<div class="card c"><div class="label">C</div><div class="value">${c}</div></div>`+
+    `<div class="card"><div class="label">Cost-to-date (doc)</div><div class="value" style="font-size:16px">${money(cost)}</div></div>`;
+  document.getElementById('tbody').innerHTML=rows.map(p=>{
+    const docs=(p.documents||[]).length;
+    const slug=esc(p.slug||'');
+    return `<tr class="clickable" data-slug="${slug}">`+
+      `<td><a href="#/p/${encodeURIComponent(p.slug)}" data-slug="${slug}">${esc(p.address||p.slug)}</a></td>`+
+      `<td>${esc(p.abc||'')}</td><td>${esc(p.company||'')}</td><td>${esc(p.region||'')}</td>`+
+      `<td class="num">${money(p.purchaseBasis)}</td><td class="num">${money(p.rmHoldingAllTime)}</td>`+
+      `<td class="num">${money(p.costToDateDocumented)}</td><td>${docs||'—'}</td></tr>`;
+  }).join('');
+}
+function specVal(specs,key){
+  if(!specs||specs[key]==null||specs[key]==='') return '—';
+  return esc(specs[key]);
+}
+function renderDetail(slug){
+  const p=DATA.find(x=>x.slug===slug);
+  const root=document.getElementById('detailRoot');
+  if(!p){ root.innerHTML='<p class="err">Property not found: '+esc(slug)+'</p>'; return; }
+  const specs=p.specs||{};
+  const docs=p.documents||[];
+  root.innerHTML=
+    `<header style="margin:0 0 12px;border:none;background:transparent;padding:0">`+
+    `<h1 style="font-size:22px">${esc(p.address||p.slug)}</h1>`+
+    `<div class="meta">${esc(p.company||'')} · ABC ${esc(p.abc||'—')} · ${esc(p.region||'')} · ${esc(p.slug)}</div></header>`+
+    `<div class="section"><h2>Cost stack</h2><div class="kv">`+
+    `<div class="k">Purchase basis</div><div>${money(p.purchaseBasis)} <span class="meta">${esc(p.purchaseSource||'')}</span></div>`+
+    `<div class="k">RM holding (all-time)</div><div>${money(p.rmHoldingAllTime)}</div>`+
+    `<div class="k">Mortgage</div><div>${money(p.mortgageAmount)} <span class="meta">${esc(p.mortgageSource||'')}</span></div>`+
+    `<div class="k">Closing estimate</div><div>${money(p.closingEstimate)}</div>`+
+    `<div class="k">Cost-to-date (documented)</div><div><strong>${money(p.costToDateDocumented)}</strong></div>`+
+    `<div class="k">Cost-to-date + closing est.</div><div>${money(p.costToDateWithClosingEst)}</div>`+
+    `</div></div>`+
+    `<div class="section"><h2>Operations</h2><div class="kv">`+
+    `<div class="k">Acquired</div><div>${esc(p.acqDate||'—')}</div>`+
+    `<div class="k">Monthly rent</div><div>${money(p.monthlyRent)}</div>`+
+    `<div class="k">Monthly costs</div><div>${money(p.monthlyCosts)}</div>`+
+    `<div class="k">Action</div><div>${esc(p.action||'—')}</div>`+
+    `<div class="k">Sold / pre-close</div><div>${p.sold?'Sold':''}${p.sold&&p.preClose?' / ':''}${p.preClose?'Pre-close':''}${(!p.sold&&!p.preClose)?'—':''}</div>`+
+    `<div class="k">Notes</div><div>${esc(p.notes||'—')}</div>`+
+    `</div></div>`+
+    `<div class="section"><h2>Specs</h2><div class="kv">`+
+    `<div class="k">Zoning</div><div>${specVal(specs,'zoning')}</div>`+
+    `<div class="k">Lot area (sf)</div><div>${specVal(specs,'lotAreaSf')}</div>`+
+    `<div class="k">Bldg area (sf)</div><div>${specVal(specs,'bldgAreaSf')}</div>`+
+    `<div class="k">Units</div><div>${specVal(specs,'units')}</div>`+
+    `<div class="k">Bedrooms</div><div>${specVal(specs,'bedrooms')}</div>`+
+    `<div class="k">Year built</div><div>${specVal(specs,'yearBuilt')}</div>`+
+    `<div class="k">Property type</div><div>${specVal(specs,'propertyType')}</div>`+
+    `<div class="k">Max buildable sf</div><div>${specVal(specs,'maxBuildableSf')}</div>`+
+    `</div></div>`+
+    `<div class="section"><h2>Documents (${docs.length})</h2>`+
+    (docs.length
+      ? `<div class="meta" style="margin-bottom:8px">File names from the deal file (not hosted as download links on this site yet).</div>`+
+        docs.map(d=>`<div class="doc">${esc(d.title||d.name||d.path||'')}</div>`).join('')
+      : '<div class="meta">No documents listed.</div>')+
+    `</div>`;
+}
+function showList(){
+  document.getElementById('listView').classList.remove('hidden');
+  document.getElementById('detailView').classList.add('hidden');
+  renderList();
+}
+function showDetail(slug){
+  document.getElementById('listView').classList.add('hidden');
+  document.getElementById('detailView').classList.remove('hidden');
+  renderDetail(slug);
+}
+function openProperty(slug){
+  if(!slug) return;
+  if(location.hash !== '#/p/'+encodeURIComponent(slug)){
+    location.hash = '#/p/'+encodeURIComponent(slug);
+  } else {
+    showDetail(slug);
+  }
+}
+function route(){
+  const h=(location.hash||'#/').replace(/^#\/?/,'');
+  if(h.startsWith('p/')){
+    showDetail(decodeURIComponent(h.slice(2)));
+  } else {
+    showList();
+  }
+}
+
+document.getElementById('tbody').addEventListener('click', function(e){
+  const a=e.target.closest('a[data-slug], tr.clickable');
+  if(!a) return;
+  e.preventDefault();
+  const slug=a.getAttribute('data-slug') || (a.closest('tr') && a.closest('tr').getAttribute('data-slug'));
+  openProperty(slug);
+});
+document.getElementById('backBtn').addEventListener('click', function(e){
+  e.preventDefault();
+  location.hash = '#/';
+});
+document.querySelectorAll('[data-abc]').forEach(el=>el.addEventListener('click',()=>{
+  document.querySelectorAll('[data-abc]').forEach(x=>x.classList.remove('on'));
+  el.classList.add('on'); abc=el.dataset.abc; renderList();
+}));
+document.querySelectorAll('[data-co]').forEach(el=>el.addEventListener('click',()=>{
+  document.querySelectorAll('[data-co]').forEach(x=>x.classList.remove('on'));
+  el.classList.add('on'); co=el.dataset.co; renderList();
+}));
+document.querySelectorAll('[data-region]').forEach(el=>el.addEventListener('click',()=>{
+  document.querySelectorAll('[data-region]').forEach(x=>x.classList.remove('on'));
+  el.classList.add('on'); region=el.dataset.region; renderList();
+}));
+document.getElementById('q').addEventListener('input', e=>{ q=e.target.value; renderList(); });
+window.addEventListener('hashchange', route);
+
+(async function(){
+  const el=document.getElementById('countMeta');
+  try {
+    const r=await fetch('/seed.b64.txt',{cache:'no-store'});
+    if(!r.ok) throw new Error('/seed.b64.txt '+r.status);
+    const b64=(await r.text()).trim();
+    const bin=Uint8Array.from(atob(b64), c=>c.charCodeAt(0));
+    const text=await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    const seed=JSON.parse(text);
+    DATA=seed.properties||[];
+    route();
+  } catch(err) {
+    el.textContent='Failed to load properties';
+    el.className='err';
+    console.error(err);
+  }
+})();
+</script>
+</body></html>
